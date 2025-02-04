@@ -1,28 +1,30 @@
-from fastapi import FastAPI, HTTPException
+from flask import Flask, request, jsonify
 import pickle
 import pandas as pd
-from pydantic import BaseModel
 
-app = FastAPI()
+app = Flask(__name__)
 
-MODEL_PATH = "../models/llm_model.pkl"
-try:
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
-except Exception as e:
-    raise RuntimeError(f"Failed to load model: {e}")
+# Load models
+with open('log_reg_model.pkl', 'rb') as f:
+    log_reg_model = pickle.load(f)
+with open('rf_model.pkl', 'rb') as f:
+    rf_model = pickle.load(f)
+with open('gbm_model.pkl', 'rb') as f:
+    gbm_model = pickle.load(f)
 
+@app.route('/predict/<model>', methods=['POST'])
+def predict(model):
+    data = request.get_json(force=True)
+    input_df = pd.DataFrame([data], columns=['Recency', 'Frequency', 'Monetary', 'Size'])
+    if model == 'logistic_regression':
+        prediction = log_reg_model.predict(input_df)[0]
+    elif model == 'random_forest':
+        prediction = rf_model.predict(input_df)[0]
+    elif model == 'gradient_boosting':
+        prediction = gbm_model.predict(input_df)[0]
+    else:
+        return jsonify({'error': 'Invalid model name'}), 400
+    return jsonify({'prediction': int(prediction)})
 
-@app.post("/predict")
-def predict(input_data):
-    try:
-        input_df = pd.DataFrame([input_data.dict()])
-        prediction = model.predict(input_df)
-        return {"prediction": prediction.tolist()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
-
-
-@app.get("/health")
-def home():
-    return {"status": "OK"}
+if __name__ == '__main__':
+    app.run(debug=True)
